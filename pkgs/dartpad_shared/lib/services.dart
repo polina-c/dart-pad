@@ -120,10 +120,12 @@ class ServicesClient {
     final httpRequest = Request('POST', Uri.parse('${rootUrl}api/v3/$action'));
     httpRequest.encoding = utf8;
     httpRequest.headers['Content-Type'] = 'application/json';
+    httpRequest.headers['polina-header'] = 'hello';
     httpRequest.body = json.encode(request);
     final response = await client.send(httpRequest);
 
     if (response.statusCode != 200) {
+      print('!!!! ${response.statusCode}: ${response.reasonPhrase}');
       throw ApiRequestError(
         action,
         '${response.statusCode}: ${response.reasonPhrase}',
