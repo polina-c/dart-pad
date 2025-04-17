@@ -5,25 +5,20 @@
 import 'dart:async';
 import 'dart:js_interop';
 import 'dart:math' as math;
-import 'dart:ui_web' as ui_web;
 
 import 'package:dartpad_shared/services.dart' as services;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pretty_diff_text/pretty_diff_text.dart';
-import 'package:web/web.dart' as web;
 
 import '../local_storage/local_storage.dart';
 import '../model.dart';
-import 'codemirror.dart';
+import '_web.dart';
 
 // TODO: implement find / find next
 
-const String _viewType = 'dartpad-editor';
-
 bool _viewFactoryInitialized = false;
-CodeMirror? codeMirrorInstance;
 
 final Key _elementViewKey = UniqueKey();
 
@@ -31,50 +26,7 @@ void _initViewFactory() {
   if (_viewFactoryInitialized) return;
   _viewFactoryInitialized = true;
 
-  ui_web.platformViewRegistry.registerViewFactory(
-    _viewType,
-    _codeMirrorFactory,
-  );
-}
-
-web.Element _codeMirrorFactory(int viewId) {
-  final div =
-      web.document.createElement('div') as web.HTMLDivElement
-        ..style.width = '100%'
-        ..style.height = '100%';
-
-  codeMirrorInstance = CodeMirror(
-    div,
-    <String, Object?>{
-      'lineNumbers': true,
-      'lineWrapping': true,
-      'mode': 'dart',
-      'theme': 'darkpad',
-      ...codeMirrorOptions,
-    }.jsify(),
-  );
-
-  CodeMirror.commands.goLineLeft =
-      ((JSObject? _) => _handleGoLineLeft(codeMirrorInstance!)).toJS;
-  CodeMirror.commands.indentIfMultiLineSelectionElseInsertSoftTab =
-      ((JSObject? _) =>
-              _indentIfMultiLineSelectionElseInsertSoftTab(codeMirrorInstance!))
-          .toJS;
-  CodeMirror.commands.weHandleElsewhere =
-      ((JSObject? _) => _weHandleElsewhere(codeMirrorInstance!)).toJS;
-
-  // Prevent the flutter web engine from handling (and preventing default on)
-  // wheel events over CodeMirror's HtmlElementView.
-  //
-  // This is needed so users can scroll code with their mouse wheel.
-  div.addEventListener(
-    'wheel',
-    (web.WheelEvent e) {
-      e.stopPropagation();
-    }.toJS,
-  );
-
-  return div;
+  registerViewFactory();
 }
 
 class EditorWidget extends StatefulWidget {
@@ -275,24 +227,7 @@ class _EditorWidgetState extends State<EditorWidget> implements EditorService {
       }.toJS,
     );
 
-    // Listen for document body to be visible, then force a code mirror refresh.
-    final observer = web.IntersectionObserver(
-      (
-        JSArray<web.IntersectionObserverEntry> entries,
-        web.IntersectionObserver observer,
-      ) {
-        for (final entry in entries.toDart) {
-          if (entry.isIntersecting) {
-            observer.unobserve(web.document.body!);
-
-            refreshViewAfterWait();
-            return;
-          }
-        }
-      }.toJS,
-    );
-
-    observer.observe(web.document.body!);
+    forceRefreshWhenVisible(refreshViewAfterWait);
   }
 
   @override
@@ -472,78 +407,6 @@ class _EditorWidgetState extends State<EditorWidget> implements EditorService {
 }
 
 // codemirror commands
-
-JSAny? _handleGoLineLeft(CodeMirror editor) {
-  // Change the cmd-left behavior to move the cursor to leftmost non-ws char.
-  return editor.execCommand('goLineLeftSmart');
-}
-
-void _indentIfMultiLineSelectionElseInsertSoftTab(CodeMirror editor) {
-  // Make it so that we can insertSoftTab when no selection or selection on 1
-  // line but if there is multiline selection we indentMore (this gives us a
-  // more typical coding editor behavior).
-  if (editor.getDoc().somethingSelected()) {
-    final selection = editor.getDoc().getSelection('\n');
-    if (selection != null && selection.contains('\n')) {
-      // Multi-line selection
-      editor.execCommand('indentMore');
-    } else {
-      editor.execCommand('insertSoftTab');
-    }
-  } else {
-    editor.execCommand('insertSoftTab');
-  }
-}
-
-void _weHandleElsewhere(CodeMirror editor) {
-  // DO NOTHING HERE - we bind/handle this at the top level html page, not
-  // within codemorror.
-}
-
-// codemirror options
-
-const codeMirrorOptions = {
-  'autoCloseBrackets': true,
-  'autoCloseTags': {'whenOpening': true, 'whenClosing': true},
-  'autofocus': false,
-  'cursorHeight': 0.85,
-  'continueComments': {'continueLineComment': false},
-  'extraKeys': {
-    'Esc': '...',
-    'Esc Tab': false,
-    'Esc Shift-Tab': false,
-    'Cmd-/': 'toggleComment',
-    'Ctrl-/': 'toggleComment',
-    'Shift-Tab': 'indentLess',
-    'Tab': 'indentIfMultiLineSelectionElseInsertSoftTab',
-    'Cmd-F': 'weHandleElsewhere',
-    'Cmd-H': 'weHandleElsewhere',
-    'Ctrl-F': 'weHandleElsewhere',
-    'Ctrl-H': 'weHandleElsewhere',
-    'Cmd-G': 'weHandleElsewhere',
-    'Shift-Ctrl-G': 'weHandleElsewhere',
-    'Ctrl-G': 'weHandleElsewhere',
-    'Shift-Cmd-G': 'weHandleElsewhere',
-    'F4': 'weHandleElsewhere',
-    'Shift-F4': 'weHandleElsewhere',
-    'Shift-Ctrl-F': 'weHandleElsewhere',
-    'Shift-Cmd-F': 'weHandleElsewhere',
-    'Cmd-Alt-F': false,
-  },
-  'gutters': ['CodeMirror-linenumbers'],
-  'highlightSelectionMatches': {
-    'style': 'highlight-selection-matches',
-    'showToken': false,
-    'annotateScrollbar': true,
-  },
-  'hintOptions': {'completeSingle': false},
-  'indentUnit': 2,
-  'matchBrackets': true,
-  'matchTags': {'bothTags': true},
-  'tabSize': 2,
-  'viewportMargin': 100,
-  'scrollbarStyle': 'simple',
-};
 
 enum CompletionType { auto, manual, quickfix }
 

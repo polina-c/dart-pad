@@ -6,16 +6,152 @@
 library;
 
 import 'dart:js_interop';
+import 'dart:ui_web' as ui_web;
 
+import 'package:flutter/material.dart';
 import 'package:web/web.dart';
+import 'package:web/web.dart' as web;
 
-extension type CodeMirrorOptions._(JSObject _) implements JSObject {
-  external String theme;
-  external String mode;
-  external bool autoCloseTags;
-  external bool lineNumbers;
-  external bool lineWrapping;
-  external JSObject extraKeys;
+CodeMirror? codeMirrorInstance;
+
+const String _viewType = 'dartpad-editor';
+
+// Listen for document body to be visible, then force a code mirror refresh.
+void forceRefreshWhenVisible(VoidCallback refreshViewAfterWait) {
+  final observer = web.IntersectionObserver(
+    (
+      JSArray<web.IntersectionObserverEntry> entries,
+      web.IntersectionObserver observer,
+    ) {
+      for (final entry in entries.toDart) {
+        if (entry.isIntersecting) {
+          observer.unobserve(web.document.body!);
+
+          refreshViewAfterWait();
+          return;
+        }
+      }
+    }.toJS,
+  );
+
+  observer.observe(web.document.body!);
+}
+
+void registerViewFactory() {
+  ui_web.platformViewRegistry.registerViewFactory(
+    _viewType,
+    _codeMirrorFactory,
+  );
+}
+
+web.Element _codeMirrorFactory(int viewId) {
+  final div =
+      web.document.createElement('div') as web.HTMLDivElement
+        ..style.width = '100%'
+        ..style.height = '100%';
+
+  codeMirrorInstance = CodeMirror(
+    div,
+    <String, Object?>{
+      'lineNumbers': true,
+      'lineWrapping': true,
+      'mode': 'dart',
+      'theme': 'darkpad',
+      ...codeMirrorOptions,
+    }.jsify(),
+  );
+
+  CodeMirror.commands.goLineLeft =
+      ((JSObject? _) => _handleGoLineLeft(codeMirrorInstance!)).toJS;
+  CodeMirror.commands.indentIfMultiLineSelectionElseInsertSoftTab =
+      ((JSObject? _) =>
+              _indentIfMultiLineSelectionElseInsertSoftTab(codeMirrorInstance!))
+          .toJS;
+  CodeMirror.commands.weHandleElsewhere =
+      ((JSObject? _) => _weHandleElsewhere(codeMirrorInstance!)).toJS;
+
+  // Prevent the flutter web engine from handling (and preventing default on)
+  // wheel events over CodeMirror's HtmlElementView.
+  //
+  // This is needed so users can scroll code with their mouse wheel.
+  div.addEventListener(
+    'wheel',
+    (web.WheelEvent e) {
+      e.stopPropagation();
+    }.toJS,
+  );
+
+  return div;
+}
+
+JSAny? _handleGoLineLeft(CodeMirror editor) {
+  // Change the cmd-left behavior to move the cursor to leftmost non-ws char.
+  return editor.execCommand('goLineLeftSmart');
+}
+
+const codeMirrorOptions = {
+  'autoCloseBrackets': true,
+  'autoCloseTags': {'whenOpening': true, 'whenClosing': true},
+  'autofocus': false,
+  'cursorHeight': 0.85,
+  'continueComments': {'continueLineComment': false},
+  'extraKeys': {
+    'Esc': '...',
+    'Esc Tab': false,
+    'Esc Shift-Tab': false,
+    'Cmd-/': 'toggleComment',
+    'Ctrl-/': 'toggleComment',
+    'Shift-Tab': 'indentLess',
+    'Tab': 'indentIfMultiLineSelectionElseInsertSoftTab',
+    'Cmd-F': 'weHandleElsewhere',
+    'Cmd-H': 'weHandleElsewhere',
+    'Ctrl-F': 'weHandleElsewhere',
+    'Ctrl-H': 'weHandleElsewhere',
+    'Cmd-G': 'weHandleElsewhere',
+    'Shift-Ctrl-G': 'weHandleElsewhere',
+    'Ctrl-G': 'weHandleElsewhere',
+    'Shift-Cmd-G': 'weHandleElsewhere',
+    'F4': 'weHandleElsewhere',
+    'Shift-F4': 'weHandleElsewhere',
+    'Shift-Ctrl-F': 'weHandleElsewhere',
+    'Shift-Cmd-F': 'weHandleElsewhere',
+    'Cmd-Alt-F': false,
+  },
+  'gutters': ['CodeMirror-linenumbers'],
+  'highlightSelectionMatches': {
+    'style': 'highlight-selection-matches',
+    'showToken': false,
+    'annotateScrollbar': true,
+  },
+  'hintOptions': {'completeSingle': false},
+  'indentUnit': 2,
+  'matchBrackets': true,
+  'matchTags': {'bothTags': true},
+  'tabSize': 2,
+  'viewportMargin': 100,
+  'scrollbarStyle': 'simple',
+};
+
+void _indentIfMultiLineSelectionElseInsertSoftTab(CodeMirror editor) {
+  // Make it so that we can insertSoftTab when no selection or selection on 1
+  // line but if there is multiline selection we indentMore (this gives us a
+  // more typical coding editor behavior).
+  if (editor.getDoc().somethingSelected()) {
+    final selection = editor.getDoc().getSelection('\n');
+    if (selection != null && selection.contains('\n')) {
+      // Multi-line selection
+      editor.execCommand('indentMore');
+    } else {
+      editor.execCommand('insertSoftTab');
+    }
+  } else {
+    editor.execCommand('insertSoftTab');
+  }
+}
+
+void _weHandleElsewhere(CodeMirror editor) {
+  // DO NOTHING HERE - we bind/handle this at the top level html page, not
+  // within codemorror.
 }
 
 extension type CodeMirror._(JSObject _) implements JSObject {
