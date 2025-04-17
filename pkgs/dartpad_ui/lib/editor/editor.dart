@@ -14,6 +14,7 @@ import 'package:pretty_diff_text/pretty_diff_text.dart';
 
 import '../local_storage/local_storage.dart';
 import '../model.dart';
+import '_shared.dart';
 import '_web.dart';
 
 // TODO: implement find / find next
@@ -257,7 +258,7 @@ class _EditorWidgetState extends State<EditorWidget> implements EditorService {
       // },
       child: HtmlElementView(
         key: _elementViewKey,
-        viewType: _viewType,
+        viewType: editorViewType,
         onPlatformViewCreated:
             (id) => _platformViewCreated(id, darkMode: darkMode),
       ),

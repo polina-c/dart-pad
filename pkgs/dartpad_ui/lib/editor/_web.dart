@@ -8,13 +8,13 @@ library;
 import 'dart:js_interop';
 import 'dart:ui_web' as ui_web;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Element;
 import 'package:web/web.dart';
 import 'package:web/web.dart' as web;
 
-CodeMirror? codeMirrorInstance;
+import '_shared.dart';
 
-const String _viewType = 'dartpad-editor';
+CodeMirror? codeMirrorInstance;
 
 // Listen for document body to be visible, then force a code mirror refresh.
 void forceRefreshWhenVisible(VoidCallback refreshViewAfterWait) {
@@ -39,7 +39,7 @@ void forceRefreshWhenVisible(VoidCallback refreshViewAfterWait) {
 
 void registerViewFactory() {
   ui_web.platformViewRegistry.registerViewFactory(
-    _viewType,
+    editorViewType,
     _codeMirrorFactory,
   );
 }
